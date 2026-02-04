@@ -142,9 +142,42 @@ function parseVariableDeclaration(
                    type.kind === 'struct' || 
                    type.kind === 'enum';
 
-  // Handle struct literal with type annotation
+  // Handle array literal with type annotation containing structs
   let initExpr = parseExpression(init);
-  if (initExpr.kind === 'struct_literal' && initExpr.structName === '__anonymous__' && typeNode) {
+  if (initExpr.kind === 'array_literal' && typeNode) {
+    const tsType = typeNode.getText();
+    // Check if this is an array type like User[] or Array<User>
+    if (tsType.endsWith('[]')) {
+      const elementType = tsType.slice(0, -2);
+      
+      if (registry.isStruct(elementType)) {
+        // Update all struct literals in the array to use the proper struct name
+        for (const elem of initExpr.elements) {
+          if (elem.kind === 'struct_literal' && elem.structName === '__anonymous__') {
+            elem.structName = elementType;
+          }
+        }
+        // Update the elementType on the array literal
+        initExpr.elementType = { kind: 'struct', name: elementType };
+      }
+    } else {
+      const arrayMatch = tsType.match(/^Array<(.+)>$/);
+      if (arrayMatch) {
+        const elementType = arrayMatch[1]!;
+        if (registry.isStruct(elementType)) {
+          // Update all struct literals in the array to use the proper struct name
+          for (const elem of initExpr.elements) {
+            if (elem.kind === 'struct_literal' && elem.structName === '__anonymous__') {
+              elem.structName = elementType;
+            }
+          }
+          // Update the elementType on the array literal
+          initExpr.elementType = { kind: 'struct', name: elementType };
+        }
+      }
+    }
+  } else if (initExpr.kind === 'struct_literal' && initExpr.structName === '__anonymous__' && typeNode) {
+    // Handle regular struct literal with type annotation
     initExpr = { ...initExpr, structName: typeNode.getText() };
   }
 

@@ -276,6 +276,14 @@ function resolveExpression(expr: IRExpression, env: TypeEnvironment): void {
     case 'array_literal':
       for (const elem of expr.elements) {
         resolveExpression(elem, env);
+        // Fix anonymous struct literals in array based on element type
+        if (elem.kind === 'struct_literal' && elem.structName === '__anonymous__') {
+          if (expr.elementType.kind === 'struct') {
+            elem.structName = expr.elementType.name;
+            // Also update the elementType to reflect the resolved struct name
+            expr.elementType = { kind: 'struct', name: expr.elementType.name };
+          }
+        }
       }
       break;
 
