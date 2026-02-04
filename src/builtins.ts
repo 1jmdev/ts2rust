@@ -25,50 +25,70 @@ export interface BuiltinNamespace {
 // Console Builtins
 // ============================================================================
 
+/**
+ * Helper to build println!/eprintln! with embedded string literals
+ * String literals are embedded directly into the format string for cleaner output
+ */
+function buildPrintln(macro: 'println' | 'eprintln', prefix: string, args: string[], rawArgs: IRExpression[]): string {
+  if (args.length === 0) {
+    return prefix ? `${macro}!("${prefix}")` : `${macro}!()`;
+  }
+
+  let formatParts: string[] = [];
+  let formatArgs: string[] = [];
+
+  if (prefix) {
+    formatParts.push(prefix);
+  }
+
+  for (let i = 0; i < args.length; i++) {
+    const rawArg = rawArgs[i];
+    const arg = args[i]!;
+
+    // Check if this is a string literal - embed it directly
+    if (rawArg && rawArg.kind === 'literal' && typeof rawArg.value === 'string') {
+      // Embed the string directly into the format string
+      formatParts.push(rawArg.value);
+    } else {
+      // Use {} placeholder for non-literals
+      formatParts.push('{}');
+      formatArgs.push(arg);
+    }
+  }
+
+  const formatStr = formatParts.join(' ');
+  
+  if (formatArgs.length === 0) {
+    return `${macro}!("${formatStr}")`;
+  }
+  
+  return `${macro}!("${formatStr}", ${formatArgs.join(', ')})`;
+}
+
 export const consoleBuiltins: BuiltinNamespace = {
   methods: {
     log: {
-      generateRust: (_obj, args) => {
-        if (args.length === 0) return 'println!()';
-        const formatStr = args.map(() => '{}').join(' ');
-        return `println!("${formatStr}", ${args.join(', ')})`;
-      },
+      generateRust: (_obj, args, rawArgs) => buildPrintln('println', '', args, rawArgs),
       mutates: false,
       isStatement: true,
     },
     error: {
-      generateRust: (_obj, args) => {
-        if (args.length === 0) return 'eprintln!()';
-        const formatStr = args.map(() => '{}').join(' ');
-        return `eprintln!("${formatStr}", ${args.join(', ')})`;
-      },
+      generateRust: (_obj, args, rawArgs) => buildPrintln('eprintln', '', args, rawArgs),
       mutates: false,
       isStatement: true,
     },
     warn: {
-      generateRust: (_obj, args) => {
-        if (args.length === 0) return 'eprintln!("[WARN]")';
-        const formatStr = args.map(() => '{}').join(' ');
-        return `eprintln!("[WARN] ${formatStr}", ${args.join(', ')})`;
-      },
+      generateRust: (_obj, args, rawArgs) => buildPrintln('eprintln', '[WARN]', args, rawArgs),
       mutates: false,
       isStatement: true,
     },
     info: {
-      generateRust: (_obj, args) => {
-        if (args.length === 0) return 'println!("[INFO]")';
-        const formatStr = args.map(() => '{}').join(' ');
-        return `println!("[INFO] ${formatStr}", ${args.join(', ')})`;
-      },
+      generateRust: (_obj, args, rawArgs) => buildPrintln('println', '[INFO]', args, rawArgs),
       mutates: false,
       isStatement: true,
     },
     debug: {
-      generateRust: (_obj, args) => {
-        if (args.length === 0) return 'println!("[DEBUG]")';
-        const formatStr = args.map(() => '{}').join(' ');
-        return `println!("[DEBUG] ${formatStr}", ${args.join(', ')})`;
-      },
+      generateRust: (_obj, args, rawArgs) => buildPrintln('println', '[DEBUG]', args, rawArgs),
       mutates: false,
       isStatement: true,
     },
