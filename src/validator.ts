@@ -7,7 +7,8 @@ import {
   FunctionDeclaration,
   VariableDeclaration,
   TypeNode,
-  ts,
+  InterfaceDeclaration,
+  EnumDeclaration,
 } from 'ts-morph';
 
 export interface ValidationError {
@@ -21,10 +22,32 @@ export interface ValidationResult {
   errors: ValidationError[];
 }
 
+export interface ValidatorOptions {
+  /** Allow interface declarations (becomes Rust structs) */
+  allowInterfaces?: boolean;
+  /** Allow type alias declarations */
+  allowTypeAliases?: boolean;
+  /** Allow enum declarations */
+  allowEnums?: boolean;
+  /** Require explicit type annotations on variables */
+  requireVariableTypes?: boolean;
+}
+
+const defaultOptions: ValidatorOptions = {
+  allowInterfaces: true,
+  allowTypeAliases: true,
+  allowEnums: true,
+  requireVariableTypes: true,
+};
+
 /**
  * Validate that a source file conforms to the supported TypeScript subset
  */
-export function validate(sourceFile: SourceFile): ValidationResult {
+export function validate(
+  sourceFile: SourceFile,
+  options: ValidatorOptions = {}
+): ValidationResult {
+  const opts = { ...defaultOptions, ...options };
   const errors: ValidationError[] = [];
 
   function addError(node: Node, message: string): void {
@@ -49,21 +72,54 @@ export function validate(sourceFile: SourceFile): ValidationResult {
       addError(typeNode, `Type 'unknown' is not allowed in ${context}`);
     }
 
-    // Ban 'null'
+    // Ban 'null' as standalone type
     if (typeNode.getKind() === SyntaxKind.NullKeyword || typeText === 'null') {
       addError(typeNode, `Type 'null' is not allowed in ${context}`);
     }
 
-    // Ban 'undefined'
+    // Ban 'undefined' as standalone type
     if (typeNode.getKind() === SyntaxKind.UndefinedKeyword || typeText === 'undefined') {
       addError(typeNode, `Type 'undefined' is not allowed in ${context}`);
     }
 
-    // Ban union types with null/undefined
+    // Check union types
     if (typeNode.getKind() === SyntaxKind.UnionType) {
       const unionTypes = typeNode.asKind(SyntaxKind.UnionType)?.getTypeNodes() || [];
       for (const ut of unionTypes) {
         checkTypeNode(ut, context);
+      }
+    }
+  }
+
+  function validateInterface(iface: InterfaceDeclaration): void {
+    // Check all properties have types
+    for (const prop of iface.getProperties()) {
+      const propType = prop.getTypeNode();
+      if (!propType) {
+        addError(prop, `Property '${prop.getName()}' must have an explicit type annotation`);
+      } else {
+        checkTypeNode(propType, `interface property '${prop.getName()}'`);
+      }
+    }
+  }
+
+  function validateEnum(enumDecl: EnumDeclaration): void {
+    // Check for string enums with complex initializers (not fully supported)
+    for (const member of enumDecl.getMembers()) {
+      const init = member.getInitializer();
+      if (init) {
+        const kind = init.getKind();
+        // Allow numeric and string literals
+        if (
+          kind !== SyntaxKind.NumericLiteral &&
+          kind !== SyntaxKind.StringLiteral &&
+          kind !== SyntaxKind.PrefixUnaryExpression // -1, etc.
+        ) {
+          addError(
+            init,
+            `Enum member '${member.getName()}' has a complex initializer that may not be fully supported`
+          );
+        }
       }
     }
   }
@@ -76,9 +132,10 @@ export function validate(sourceFile: SourceFile): ValidationResult {
       addError(node, 'Class declarations are not supported');
     }
 
-    // Ban async functions
+    // Check function declarations
     if (kind === SyntaxKind.FunctionDeclaration) {
       const func = node as FunctionDeclaration;
+
       if (func.isAsync()) {
         addError(node, 'Async functions are not supported');
       }
@@ -86,7 +143,10 @@ export function validate(sourceFile: SourceFile): ValidationResult {
       // Check return type is specified
       const returnType = func.getReturnTypeNode();
       if (!returnType) {
-        addError(node, `Function '${func.getName() || 'anonymous'}' must have an explicit return type`);
+        addError(
+          node,
+          `Function '${func.getName() || 'anonymous'}' must have an explicit return type`
+        );
       } else {
         checkTypeNode(returnType, `function '${func.getName() || 'anonymous'}' return type`);
       }
@@ -125,28 +185,38 @@ export function validate(sourceFile: SourceFile): ValidationResult {
       addError(node, 'Throw statements are not supported');
     }
 
-    // Ban interface declarations (phase 2)
+    // Handle interface declarations
     if (kind === SyntaxKind.InterfaceDeclaration) {
-      addError(node, 'Interface declarations are not supported in MVP');
+      if (!opts.allowInterfaces) {
+        addError(node, 'Interface declarations are not enabled');
+      } else {
+        validateInterface(node as InterfaceDeclaration);
+      }
     }
 
-    // Ban type alias declarations (phase 2)
+    // Handle type alias declarations
     if (kind === SyntaxKind.TypeAliasDeclaration) {
-      addError(node, 'Type alias declarations are not supported in MVP');
+      if (!opts.allowTypeAliases) {
+        addError(node, 'Type alias declarations are not enabled');
+      }
     }
 
-    // Ban enum declarations
+    // Handle enum declarations
     if (kind === SyntaxKind.EnumDeclaration) {
-      addError(node, 'Enum declarations are not supported');
+      if (!opts.allowEnums) {
+        addError(node, 'Enum declarations are not enabled');
+      } else {
+        validateEnum(node as EnumDeclaration);
+      }
     }
 
     // Check variable declarations have explicit types
     if (kind === SyntaxKind.VariableDeclaration) {
       const varDecl = node as VariableDeclaration;
       const typeNode = varDecl.getTypeNode();
-      if (!typeNode) {
+      if (opts.requireVariableTypes && !typeNode) {
         addError(node, `Variable '${varDecl.getName()}' must have an explicit type annotation`);
-      } else {
+      } else if (typeNode) {
         checkTypeNode(typeNode, `variable '${varDecl.getName()}'`);
       }
     }
@@ -170,7 +240,5 @@ export function validate(sourceFile: SourceFile): ValidationResult {
  * Format validation errors for display
  */
 export function formatErrors(errors: ValidationError[], filename: string): string {
-  return errors
-    .map((e) => `${filename}:${e.line}:${e.column}: error: ${e.message}`)
-    .join('\n');
+  return errors.map((e) => `${filename}:${e.line}:${e.column}: error: ${e.message}`).join('\n');
 }
