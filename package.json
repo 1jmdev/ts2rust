@@ -1,8 +1,16 @@
 {
   "name": "ts2rust",
-  "module": "index.ts",
+  "version": "0.1.0",
+  "description": "TypeScript to Rust transpiler for a strict subset of TypeScript",
+  "module": "src/cli.ts",
   "type": "module",
   "private": true,
+  "scripts": {
+    "ts2rust": "bun src/cli.ts",
+    "check": "bun src/cli.ts check",
+    "rust": "bun src/cli.ts rust",
+    "build": "bun src/cli.ts build"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },
