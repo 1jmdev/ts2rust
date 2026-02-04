@@ -9,8 +9,6 @@ import {
 } from './types.ts';
 import {
   getBuiltinMethod,
-  getArrayMethod,
-  getStringMethod,
   resolveMethodByName,
   mathConstants,
 } from './builtins/index.ts';

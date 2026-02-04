@@ -1,7 +1,6 @@
 // Codegen Statements - Generate Rust code for IR statements
 
 import type { IRStatement, IRType } from '../ir/index.ts';
-import { isVoidType } from '../ir/index.ts';
 import { toSnakeCase, irTypeToRust, indent } from './types.ts';
 import { generateExpression, generateExpressionWithType } from './expressions.ts';
 import { getBuiltinMethod, getArrayMethod } from './builtins/index.ts';

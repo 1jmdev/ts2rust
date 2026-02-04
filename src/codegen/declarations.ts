@@ -9,7 +9,7 @@ import type {
   IRDeclaration,
 } from '../ir/index.ts';
 import { isVoidType } from '../ir/index.ts';
-import { toSnakeCase, irTypeToRust, indent } from './types.ts';
+import { toSnakeCase, irTypeToRust } from './types.ts';
 import { generateStatement } from './statements.ts';
 
 // ============================================================================

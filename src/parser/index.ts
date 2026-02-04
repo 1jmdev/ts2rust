@@ -11,7 +11,6 @@ import {
   type IRFunction,
   type IRStruct,
   type IREnum,
-  type IRDeclaration,
 } from '../ir/index.ts';
 
 import { TypeRegistry, globalTypeRegistry } from './types.ts';

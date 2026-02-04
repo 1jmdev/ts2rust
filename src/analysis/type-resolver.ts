@@ -16,8 +16,6 @@ import {
   primitiveType,
   arrayType,
   isArrayType,
-  isStringType,
-  isNumericType,
 } from '../ir/index.ts';
 
 // ============================================================================
