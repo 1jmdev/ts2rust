@@ -119,18 +119,24 @@ function resolveFunction(func: IRFunction, parentEnv: TypeEnvironment): void {
     env.define(param.name, param.type);
   }
 
-  // Resolve statements
+  // Resolve statements, passing return type for struct literal resolution
   for (const stmt of func.body) {
-    resolveStatement(stmt, env);
+    resolveStatement(stmt, env, func.returnType);
   }
 }
 
 /**
  * Resolve types in a statement
  */
-function resolveStatement(stmt: IRStatement, env: TypeEnvironment): void {
+function resolveStatement(stmt: IRStatement, env: TypeEnvironment, returnType?: IRType): void {
   switch (stmt.kind) {
     case 'variable':
+      // Fix anonymous struct literals based on declared type
+      if (stmt.init.kind === 'struct_literal' && stmt.init.structName === '__anonymous__') {
+        if (stmt.type.kind === 'struct') {
+          stmt.init.structName = stmt.type.name;
+        }
+      }
       env.define(stmt.name, stmt.type);
       resolveExpression(stmt.init, env);
       break;
@@ -142,6 +148,12 @@ function resolveStatement(stmt: IRStatement, env: TypeEnvironment): void {
 
     case 'return':
       if (stmt.value) {
+        // Fix anonymous struct literals based on function return type
+        if (stmt.value.kind === 'struct_literal' && stmt.value.structName === '__anonymous__') {
+          if (returnType && returnType.kind === 'struct') {
+            stmt.value.structName = returnType.name;
+          }
+        }
         resolveExpression(stmt.value, env);
       }
       break;
@@ -149,11 +161,11 @@ function resolveStatement(stmt: IRStatement, env: TypeEnvironment): void {
     case 'if':
       resolveExpression(stmt.condition, env);
       for (const s of stmt.thenBranch) {
-        resolveStatement(s, env);
+        resolveStatement(s, env, returnType);
       }
       if (stmt.elseBranch) {
         for (const s of stmt.elseBranch) {
-          resolveStatement(s, env);
+          resolveStatement(s, env, returnType);
         }
       }
       break;
@@ -161,7 +173,7 @@ function resolveStatement(stmt: IRStatement, env: TypeEnvironment): void {
     case 'while':
       resolveExpression(stmt.condition, env);
       for (const s of stmt.body) {
-        resolveStatement(s, env);
+        resolveStatement(s, env, returnType);
       }
       break;
 
@@ -173,7 +185,7 @@ function resolveStatement(stmt: IRStatement, env: TypeEnvironment): void {
         env.define(stmt.variable, iterType.elementType);
       }
       for (const s of stmt.body) {
-        resolveStatement(s, env);
+        resolveStatement(s, env, returnType);
       }
       break;
 
@@ -184,7 +196,7 @@ function resolveStatement(stmt: IRStatement, env: TypeEnvironment): void {
           resolveExpression(c.value, env);
         }
         for (const s of c.body) {
-          resolveStatement(s, env);
+          resolveStatement(s, env, returnType);
         }
       }
       break;
@@ -196,7 +208,7 @@ function resolveStatement(stmt: IRStatement, env: TypeEnvironment): void {
     case 'block':
       const blockEnv = env.child();
       for (const s of stmt.statements) {
-        resolveStatement(s, blockEnv);
+        resolveStatement(s, blockEnv, returnType);
       }
       break;
   }

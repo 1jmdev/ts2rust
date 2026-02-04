@@ -221,11 +221,26 @@ export function parseEnum(
 // Top-Level Parsing
 // ============================================================================
 
+/**
+ * Check if a statement kind is a declaration (not executable code)
+ */
+function isDeclarationKind(kind: SyntaxKind): boolean {
+  return (
+    kind === SyntaxKind.InterfaceDeclaration ||
+    kind === SyntaxKind.TypeAliasDeclaration ||
+    kind === SyntaxKind.EnumDeclaration ||
+    kind === SyntaxKind.FunctionDeclaration ||
+    kind === SyntaxKind.ClassDeclaration
+  );
+}
+
 export function parseDeclarations(
   sourceFile: SourceFile,
   registry: TypeRegistry = globalTypeRegistry
 ): IRDeclaration[] {
   const declarations: IRDeclaration[] = [];
+  const topLevelStatements: IRStatement[] = [];
+  let hasMainFunction = false;
 
   for (const statement of sourceFile.getStatements()) {
     const kind = statement.getKind();
@@ -243,11 +258,71 @@ export function parseDeclarations(
         declarations.push(parseEnum(statement as EnumDeclaration, registry));
         break;
 
-      case SyntaxKind.FunctionDeclaration:
-        declarations.push(parseFunction(statement as FunctionDeclaration, registry));
+      case SyntaxKind.FunctionDeclaration: {
+        const func = parseFunction(statement as FunctionDeclaration, registry);
+        declarations.push(func);
+        if (func.name === 'main') {
+          hasMainFunction = true;
+        }
+        break;
+      }
+
+      default:
+        // Non-declaration statements go into the implicit main function
+        if (!isDeclarationKind(kind)) {
+          const parsed = parseTopLevelStatement(statement, registry);
+          if (parsed) {
+            topLevelStatements.push(parsed);
+          }
+        }
         break;
     }
   }
 
+  // If there are top-level statements and no explicit main function,
+  // create a synthetic main function to hold them
+  if (topLevelStatements.length > 0 && !hasMainFunction) {
+    declarations.push({
+      kind: 'function',
+      name: 'main',
+      params: [],
+      returnType: primitiveType('void'),
+      body: topLevelStatements,
+      public: true,
+    });
+  }
+
   return declarations;
+}
+
+/**
+ * Parse a top-level statement (variable declaration, expression, etc.)
+ */
+function parseTopLevelStatement(
+  statement: import('ts-morph').Statement,
+  registry: TypeRegistry
+): IRStatement | null {
+  const kind = statement.getKind();
+
+  // Import parseStatement dynamically to avoid circular dependency
+  const { parseStatement } = require('./statements.ts');
+
+  switch (kind) {
+    case SyntaxKind.VariableStatement:
+    case SyntaxKind.ExpressionStatement:
+    case SyntaxKind.IfStatement:
+    case SyntaxKind.WhileStatement:
+    case SyntaxKind.ForStatement:
+    case SyntaxKind.ForOfStatement:
+    case SyntaxKind.SwitchStatement:
+    case SyntaxKind.ReturnStatement:
+    case SyntaxKind.BreakStatement:
+    case SyntaxKind.ContinueStatement:
+    case SyntaxKind.Block:
+      return parseStatement(statement, registry);
+
+    default:
+      // Skip unsupported statements (imports, exports, etc.)
+      return null;
+  }
 }
