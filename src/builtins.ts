@@ -188,10 +188,18 @@ export const arrayBuiltins: BuiltinNamespace = {
 
     // Non-mutating methods that return new arrays
     slice: {
-      generateRust: (obj, args) => {
+      generateRust: (obj, args, rawArgs) => {
         if (args.length === 0) return `${obj}.clone()`;
-        if (args.length === 1) return `${obj}[${args[0]} as usize..].to_vec()`;
-        return `${obj}[${args[0]} as usize..${args[1]} as usize].to_vec()`;
+        // Check if args are literal integers to avoid unnecessary casts
+        const arg0IsLiteral = rawArgs[0]?.kind === 'literal' && typeof rawArgs[0].value === 'number' && Number.isInteger(rawArgs[0].value);
+        const arg1IsLiteral = rawArgs[1]?.kind === 'literal' && typeof rawArgs[1].value === 'number' && Number.isInteger(rawArgs[1].value);
+        
+        if (args.length === 1) {
+          return arg0IsLiteral ? `${obj}[${args[0]}..].to_vec()` : `${obj}[${args[0]} as usize..].to_vec()`;
+        }
+        const start = arg0IsLiteral ? args[0] : `${args[0]} as usize`;
+        const end = arg1IsLiteral ? args[1] : `${args[1]} as usize`;
+        return `${obj}[${start}..${end}].to_vec()`;
       },
       mutates: false,
       isStatement: false,
@@ -225,19 +233,19 @@ export const arrayBuiltins: BuiltinNamespace = {
     // Search methods
     indexOf: {
       generateRust: (obj, args) => {
-        return `${obj}.iter().position(|x| *x == ${args[0]}).map(|i| i as f64).unwrap_or(-1.0)`;
+        return `${obj}.iter().position(|x| *x == ${args[0]}).map(|i| i as i32).unwrap_or(-1)`;
       },
       mutates: false,
       isStatement: false,
-      returnType: 'f64',
+      returnType: 'i32',
     },
     lastIndexOf: {
       generateRust: (obj, args) => {
-        return `${obj}.iter().rposition(|x| *x == ${args[0]}).map(|i| i as f64).unwrap_or(-1.0)`;
+        return `${obj}.iter().rposition(|x| *x == ${args[0]}).map(|i| i as i32).unwrap_or(-1)`;
       },
       mutates: false,
       isStatement: false,
-      returnType: 'f64',
+      returnType: 'i32',
     },
     includes: {
       generateRust: (obj, args) => `${obj}.contains(&${args[0]})`,
@@ -256,11 +264,11 @@ export const arrayBuiltins: BuiltinNamespace = {
     },
     findIndex: {
       generateRust: (obj, args) => {
-        return `${obj}.iter().position(|x| /* predicate */).map(|i| i as f64).unwrap_or(-1.0)`;
+        return `${obj}.iter().position(|x| /* predicate */).map(|i| i as i32).unwrap_or(-1)`;
       },
       mutates: false,
       isStatement: false,
-      returnType: 'f64',
+      returnType: 'i32',
     },
 
     // Iteration methods (these need special handling for closures)
@@ -367,22 +375,25 @@ export const stringBuiltins: BuiltinNamespace = {
       returnType: 'String',
     },
     includes: {
-      generateRust: (obj, args) => `${obj}.contains(${args[0]}.as_str())`,
+      generateRust: (obj, args, rawArgs) => {
+        // For string contains, the argument is a pattern - no & needed for string literals
+        return `${obj}.contains(${args[0]})`;
+      },
       mutates: false,
       isStatement: false,
       returnType: 'bool',
     },
     indexOf: {
-      generateRust: (obj, args) => `${obj}.find(${args[0]}.as_str()).map(|i| i as f64).unwrap_or(-1.0)`,
+      generateRust: (obj, args) => `${obj}.find(${args[0]}).map(|i| i as i32).unwrap_or(-1)`,
       mutates: false,
       isStatement: false,
-      returnType: 'f64',
+      returnType: 'i32',
     },
     lastIndexOf: {
-      generateRust: (obj, args) => `${obj}.rfind(${args[0]}.as_str()).map(|i| i as f64).unwrap_or(-1.0)`,
+      generateRust: (obj, args) => `${obj}.rfind(${args[0]}).map(|i| i as i32).unwrap_or(-1)`,
       mutates: false,
       isStatement: false,
-      returnType: 'f64',
+      returnType: 'i32',
     },
     slice: {
       generateRust: (obj, args) => {
@@ -435,20 +446,20 @@ export const stringBuiltins: BuiltinNamespace = {
     split: {
       generateRust: (obj, args) => {
         const sep = args[0] || '""';
-        return `${obj}.split(${sep}.as_str()).map(|s| s.to_string()).collect::<Vec<String>>()`;
+        return `${obj}.split(${sep}).map(|s| s.to_string()).collect::<Vec<String>>()`;
       },
       mutates: false,
       isStatement: false,
       returnType: 'Vec<String>',
     },
     replace: {
-      generateRust: (obj, args) => `${obj}.replacen(${args[0]}.as_str(), ${args[1]}.as_str(), 1)`,
+      generateRust: (obj, args) => `${obj}.replacen(${args[0]}, ${args[1]}, 1)`,
       mutates: false,
       isStatement: false,
       returnType: 'String',
     },
     replaceAll: {
-      generateRust: (obj, args) => `${obj}.replace(${args[0]}.as_str(), ${args[1]}.as_str())`,
+      generateRust: (obj, args) => `${obj}.replace(${args[0]}, ${args[1]})`,
       mutates: false,
       isStatement: false,
       returnType: 'String',
@@ -460,13 +471,13 @@ export const stringBuiltins: BuiltinNamespace = {
       returnType: 'String',
     },
     startsWith: {
-      generateRust: (obj, args) => `${obj}.starts_with(${args[0]}.as_str())`,
+      generateRust: (obj, args) => `${obj}.starts_with(${args[0]})`,
       mutates: false,
       isStatement: false,
       returnType: 'bool',
     },
     endsWith: {
-      generateRust: (obj, args) => `${obj}.ends_with(${args[0]}.as_str())`,
+      generateRust: (obj, args) => `${obj}.ends_with(${args[0]})`,
       mutates: false,
       isStatement: false,
       returnType: 'bool',

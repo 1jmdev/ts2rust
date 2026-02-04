@@ -83,10 +83,10 @@ function parseFunction(func: FunctionDeclaration): IRFunction {
     type: mapTsTypeToIR(param.getTypeNode()!.getText()),
   }));
 
-  // Parse return type
+  // Parse return type - use forReturnType=true for owned types
   const returnTypeNode = func.getReturnTypeNode();
   const returnType = returnTypeNode
-    ? mapTsTypeToIR(returnTypeNode.getText())
+    ? mapTsTypeToIR(returnTypeNode.getText(), true)
     : primitiveType('void');
 
   // Parse body
@@ -167,7 +167,7 @@ function parseStatement(stmt: Statement): IRStatement {
               kind: 'binary',
               operator: '+',
               left: operand,
-              right: { kind: 'literal', value: 1, type: primitiveType('f64') } satisfies IRLiteral,
+              right: { kind: 'literal', value: 1, type: primitiveType('i32'), isInteger: true } satisfies IRLiteral,
             } satisfies IRBinaryOp,
           } satisfies IRAssignment;
         }
@@ -180,7 +180,7 @@ function parseStatement(stmt: Statement): IRStatement {
               kind: 'binary',
               operator: '-',
               left: operand,
-              right: { kind: 'literal', value: 1, type: primitiveType('f64') } satisfies IRLiteral,
+              right: { kind: 'literal', value: 1, type: primitiveType('i32'), isInteger: true } satisfies IRLiteral,
             } satisfies IRBinaryOp,
           } satisfies IRAssignment;
         }
@@ -297,7 +297,7 @@ function parseStatement(stmt: Statement): IRStatement {
                 kind: 'binary',
                 operator: '+',
                 left: operand,
-                right: { kind: 'literal', value: 1, type: primitiveType('f64') } satisfies IRLiteral,
+                right: { kind: 'literal', value: 1, type: primitiveType('i32'), isInteger: true } satisfies IRLiteral,
               } satisfies IRBinaryOp,
             } satisfies IRAssignment);
           } else if (opToken === SyntaxKind.MinusMinusToken) {
@@ -308,7 +308,7 @@ function parseStatement(stmt: Statement): IRStatement {
                 kind: 'binary',
                 operator: '-',
                 left: operand,
-                right: { kind: 'literal', value: 1, type: primitiveType('f64') } satisfies IRLiteral,
+                right: { kind: 'literal', value: 1, type: primitiveType('i32'), isInteger: true } satisfies IRLiteral,
               } satisfies IRBinaryOp,
             } satisfies IRAssignment);
           }
@@ -325,7 +325,7 @@ function parseStatement(stmt: Statement): IRStatement {
                 kind: 'binary',
                 operator: '+',
                 left: operand,
-                right: { kind: 'literal', value: 1, type: primitiveType('f64') } satisfies IRLiteral,
+                right: { kind: 'literal', value: 1, type: primitiveType('i32'), isInteger: true } satisfies IRLiteral,
               } satisfies IRBinaryOp,
             } satisfies IRAssignment);
           } else if (opText === SyntaxKind.MinusMinusToken) {
@@ -336,7 +336,7 @@ function parseStatement(stmt: Statement): IRStatement {
                 kind: 'binary',
                 operator: '-',
                 left: operand,
-                right: { kind: 'literal', value: 1, type: primitiveType('f64') } satisfies IRLiteral,
+                right: { kind: 'literal', value: 1, type: primitiveType('i32'), isInteger: true } satisfies IRLiteral,
               } satisfies IRBinaryOp,
             } satisfies IRAssignment);
           }
@@ -453,10 +453,13 @@ function parseExpression(expr: Expression): IRExpression {
   switch (kind) {
     case SyntaxKind.NumericLiteral: {
       const num = expr as NumericLiteral;
+      const value = num.getLiteralValue();
+      const isInteger = Number.isInteger(value);
       return {
         kind: 'literal',
-        value: num.getLiteralValue(),
-        type: primitiveType('f64'),
+        value: value,
+        type: primitiveType(isInteger ? 'i32' : 'f64'),
+        isInteger,
       } satisfies IRLiteral;
     }
 
@@ -465,7 +468,7 @@ function parseExpression(expr: Expression): IRExpression {
       return {
         kind: 'literal',
         value: str.getLiteralValue(),
-        type: primitiveType('String'),
+        type: primitiveType('&str'),  // String literals are &str
       } satisfies IRLiteral;
     }
 

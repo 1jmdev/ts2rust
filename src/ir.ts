@@ -5,10 +5,10 @@
 // ============================================================================
 
 export type IRType =
-  | { kind: 'primitive'; name: 'f64' | 'String' | 'bool' | 'void' }
+  | { kind: 'primitive'; name: 'f64' | 'i32' | 'String' | '&str' | 'bool' | 'void' | 'usize' }
   | { kind: 'array'; elementType: IRType };
 
-export function primitiveType(name: 'f64' | 'String' | 'bool' | 'void'): IRType {
+export function primitiveType(name: 'f64' | 'i32' | 'String' | '&str' | 'bool' | 'void' | 'usize'): IRType {
   return { kind: 'primitive', name };
 }
 
@@ -35,6 +35,8 @@ export interface IRLiteral {
   kind: 'literal';
   value: number | string | boolean;
   type: IRType;
+  /** For number literals, track if the original was an integer */
+  isInteger?: boolean;
 }
 
 export interface IRIdentifier {
