@@ -137,7 +137,10 @@ function parseVariableDeclaration(
     throw new Error(`Variable '${name}' must have an initializer`);
   }
 
-  const mutable = declKind === VariableDeclarationKind.Let;
+  const mutable = declKind === VariableDeclarationKind.Let || 
+                   type.kind === 'array' || 
+                   type.kind === 'struct' || 
+                   type.kind === 'enum';
 
   // Handle struct literal with type annotation
   let initExpr = parseExpression(init);
