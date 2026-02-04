@@ -6,6 +6,7 @@
 
 import type { IRProgram, IRDeclaration, IRStruct, IREnum } from '../ir/index.ts';
 import { generateDeclaration } from './declarations.ts';
+import { generateConsoleHelpers } from './helpers/console.ts';
 
 // Re-export utilities
 export { toSnakeCase, toPascalCase, irTypeToRust, escapeString, indent } from './types.ts';
@@ -142,6 +143,9 @@ export function generate(program: IRProgram): string {
       sections.push(generateDeclaration(decl));
     }
   }
+
+  // Add console helper functions
+  sections.push(generateConsoleHelpers());
 
   return sections.join('\n\n') + '\n';
 }
