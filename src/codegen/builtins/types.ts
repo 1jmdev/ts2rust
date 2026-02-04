@@ -26,6 +26,8 @@ export interface BuiltinMethodHandler {
  */
 export interface BuiltinNamespace {
   methods: Record<string, BuiltinMethodHandler>;
+  /** Constants/properties accessible on this namespace */
+  constants?: Record<string, { code: string; returnType?: string }>;
 }
 
 // ============================================================================
@@ -87,13 +89,13 @@ export function buildPrintln(
 }
 
 /**
- * Check if an expression needs {:?} debug format (enums, structs)
+ * Check if an expression needs {:?} debug format (enums, structs, arrays)
  */
 function needsDebugFormat(expr: IRExpression): boolean {
   // Check resolved type if available
   if ('resolvedType' in expr && expr.resolvedType) {
     const t = expr.resolvedType as { kind: string };
-    return t.kind === 'enum' || t.kind === 'struct';
+    return t.kind === 'enum' || t.kind === 'struct' || t.kind === 'array';
   }
   
   // Enum variants always need debug format

@@ -11,6 +11,7 @@ import {
   getBuiltinMethod,
   resolveMethodByName,
   mathConstants,
+  processConstants,
 } from './builtins/index.ts';
 
 // ============================================================================
@@ -178,6 +179,14 @@ function generatePropertyAccess(expr: IRExpression & { kind: 'property' }): stri
     const constant = mathConstants[expr.property];
     if (constant) {
       return constant;
+    }
+  }
+
+  // Handle process constants
+  if (expr.object.kind === 'identifier' && expr.object.name === 'process') {
+    const constant = processConstants[expr.property];
+    if (constant) {
+      return constant.code;
     }
   }
 

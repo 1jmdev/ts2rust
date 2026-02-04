@@ -11,6 +11,8 @@ import {
   EnumDeclaration,
 } from 'ts-morph';
 
+import { processConstants } from './codegen/builtins/process.ts';
+
 export interface ValidationError {
   message: string;
   line: number;
@@ -22,22 +24,33 @@ export interface ValidationResult {
   errors: ValidationError[];
 }
 
-export interface ValidatorOptions {
-  /** Allow interface declarations (becomes Rust structs) */
-  allowInterfaces?: boolean;
-  /** Allow type alias declarations */
-  allowTypeAliases?: boolean;
-  /** Allow enum declarations */
-  allowEnums?: boolean;
-  /** Require explicit type annotations on variables */
-  requireVariableTypes?: boolean;
-}
+  export interface ValidatorOptions {
+    /** Allow interface declarations (becomes Rust structs) */
+    allowInterfaces?: boolean;
+    /** Allow type alias declarations */
+    allowTypeAliases?: boolean;
+    /** Allow enum declarations */
+    allowEnums?: boolean;
+    /** Require explicit type annotations on variables */
+    requireVariableTypes?: boolean;
+    /** List of builtin methods that don't need type annotations */
+    knownReturnTypes?: Record<string, string>;
+  }
 
 const defaultOptions: ValidatorOptions = {
   allowInterfaces: true,
   allowTypeAliases: true,
   allowEnums: true,
   requireVariableTypes: true,
+  knownReturnTypes: {
+    cwd: 'String',
+    uptime: 'f64',
+    memoryUsage: 'f64',
+    hrtime: 'f64',
+    title: 'String',
+    release: 'String',
+    versions: 'String',
+  },
 };
 
 /**
@@ -214,7 +227,51 @@ export function validate(
     if (kind === SyntaxKind.VariableDeclaration) {
       const varDecl = node as VariableDeclaration;
       const typeNode = varDecl.getTypeNode();
-      if (opts.requireVariableTypes && !typeNode) {
+      const init = varDecl.getInitializer();
+      
+      // Check if this is a known builtin method call that has a return type
+      let hasKnownType = false;
+      if (opts.knownReturnTypes && init) {
+        const initKind = init.getKind();
+        
+        // Handle method calls like process.cwd()
+        if (initKind === SyntaxKind.CallExpression) {
+          const call = init.asKind(SyntaxKind.CallExpression);
+          if (call) {
+            const expr = call.getExpression();
+            if (expr.getKind() === SyntaxKind.PropertyAccessExpression) {
+              const propAccess = expr.asKind(SyntaxKind.PropertyAccessExpression);
+              if (propAccess) {
+                const obj = propAccess.getExpression();
+                const method = propAccess.getName();
+                if (obj.getKind() === SyntaxKind.Identifier && obj.getText() === 'process') {
+                  const returnType = opts.knownReturnTypes[method];
+                  if (returnType) {
+                    hasKnownType = true;
+                  }
+                }
+              }
+            }
+          }
+        }
+        
+        // Handle property access like process.pid
+        if (initKind === SyntaxKind.PropertyAccessExpression) {
+          const propAccess = init.asKind(SyntaxKind.PropertyAccessExpression);
+          if (propAccess) {
+            const obj = propAccess.getExpression();
+            const prop = propAccess.getName();
+            if (obj.getKind() === SyntaxKind.Identifier && obj.getText() === 'process') {
+              const constant = processConstants[prop];
+              if (constant) {
+                hasKnownType = true;
+              }
+            }
+          }
+        }
+      }
+      
+      if (opts.requireVariableTypes && !typeNode && !hasKnownType) {
         addError(node, `Variable '${varDecl.getName()}' must have an explicit type annotation`);
       } else if (typeNode) {
         checkTypeNode(typeNode, `variable '${varDecl.getName()}'`);

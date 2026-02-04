@@ -8,11 +8,13 @@ import { consoleBuiltins } from './console.ts';
 import { arrayBuiltins } from './array.ts';
 import { stringBuiltins } from './string.ts';
 import { mathBuiltins } from './math.ts';
+import { processBuiltins } from './process.ts';
 
-// Re-export types
+// Re-export types and constants
 export type { BuiltinMethodHandler, BuiltinNamespace } from './types.ts';
 export { buildPrintln } from './types.ts';
 export { mathConstants } from './math.ts';
+export { processConstants } from './process.ts';
 
 // ============================================================================
 // Builtin Registry
@@ -26,6 +28,7 @@ export const builtinRegistry: Record<string, BuiltinNamespace> = {
   Array: arrayBuiltins,
   String: stringBuiltins,
   Math: mathBuiltins,
+  process: processBuiltins,
 };
 
 // ============================================================================
@@ -75,6 +78,13 @@ export function getMathMethod(method: string): BuiltinMethodHandler | undefined 
  */
 export function getConsoleMethod(method: string): BuiltinMethodHandler | undefined {
   return consoleBuiltins.methods[method];
+}
+
+/**
+ * Get process method handler
+ */
+export function getProcessMethod(method: string): BuiltinMethodHandler | undefined {
+  return processBuiltins.methods[method];
 }
 
 // ============================================================================

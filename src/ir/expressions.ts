@@ -79,6 +79,8 @@ export interface IRPropertyAccess {
   property: string;
   /** Resolved object type (populated during analysis phase) */
   objectType?: IRType;
+  /** Resolved type of this expression (populated during analysis phase) */
+  resolvedType?: IRType;
 }
 
 // ============================================================================

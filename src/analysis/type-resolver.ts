@@ -17,6 +17,7 @@ import {
   arrayType,
   isArrayType,
 } from '../ir/index.ts';
+import { getBuiltinMethod, getArrayMethod, getStringMethod, processConstants } from '../codegen/builtins/index.ts';
 
 // ============================================================================
 // Type Environment
@@ -269,6 +270,7 @@ function resolveExpression(expr: IRExpression, env: TypeEnvironment): void {
         }
       }
       expr.objectType = inferType(expr.object, env);
+      expr.resolvedType = inferType(expr, env);
       break;
 
     case 'array_literal':
@@ -336,6 +338,38 @@ export function inferType(expr: IRExpression, env: TypeEnvironment): IRType {
       if (expr.property === 'length') {
         return primitiveType('usize');
       }
+      // Handle process constants
+      if (expr.object.kind === 'identifier' && expr.object.name === 'process') {
+        const constant = processConstants[expr.property];
+        if (constant?.returnType) {
+          const typeName = constant.returnType.replace('&', '');
+          // Check if this is an array/vector type
+          if (typeName.includes('Vec<') || typeName.includes('[')) {
+            return arrayType(primitiveType('String'));
+          }
+          return primitiveType(typeName as any);
+        }
+      }
+      return primitiveType('void');
+
+    case 'method_call':
+      // Try to infer return type from builtin methods
+      if (expr.namespace) {
+        const handler = getBuiltinMethod(expr.namespace, expr.method);
+        if (handler?.returnType) {
+          return primitiveType(handler.returnType as any);
+        }
+      } else {
+        const arrayHandler = getArrayMethod(expr.method);
+        if (arrayHandler?.returnType) {
+          return primitiveType(arrayHandler.returnType as any);
+        }
+        const stringHandler = getStringMethod(expr.method);
+        if (stringHandler?.returnType) {
+          return primitiveType(stringHandler.returnType as any);
+        }
+      }
+      // Default: assume void for unknown methods
       return primitiveType('void');
 
     case 'array_literal':

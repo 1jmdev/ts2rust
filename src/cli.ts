@@ -27,6 +27,9 @@ name = "{{name}}"
 version = "0.1.0"
 edition = "2021"
 
+[dependencies]
+sysinfo = "0.30"
+
 [profile.release]
 opt-level = 3
 lto = true
