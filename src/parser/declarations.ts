@@ -79,8 +79,9 @@ export function parseInterface(
   for (const prop of iface.getProperties()) {
     const propName = prop.getName();
     const typeNode = prop.getTypeNode();
+    // Use owned types (String instead of &str) for struct fields
     const propType = typeNode 
-      ? mapTsTypeToIR(typeNode.getText(), false, registry)
+      ? mapTsTypeToIR(typeNode.getText(), true, registry)
       : primitiveType('f64');
 
     fields.push({
@@ -121,8 +122,9 @@ export function parseTypeAlias(
         const propSig = member.asKind(SyntaxKind.PropertySignature)!;
         const propName = propSig.getName();
         const propTypeNode = propSig.getTypeNode();
+        // Use owned types (String instead of &str) for struct fields
         const propType = propTypeNode
-          ? mapTsTypeToIR(propTypeNode.getText(), false, registry)
+          ? mapTsTypeToIR(propTypeNode.getText(), true, registry)
           : primitiveType('f64');
 
         fields.push({

@@ -35,6 +35,7 @@ export interface BuiltinNamespace {
 /**
  * Helper to build println!/eprintln! with embedded string literals
  * String literals are embedded directly into the format string for cleaner output
+ * Uses {:?} debug format only for enums/structs, {} for primitives
  */
 export function buildPrintln(
   macro: 'println' | 'eprintln',
@@ -61,8 +62,16 @@ export function buildPrintln(
     if (rawArg && rawArg.kind === 'literal' && typeof rawArg.value === 'string') {
       // Embed the string directly into the format string
       formatParts.push(rawArg.value);
+    } else if (rawArg && rawArg.kind === 'literal') {
+      // Number/boolean literals use {} (Display trait)
+      formatParts.push('{}');
+      formatArgs.push(arg);
+    } else if (rawArg && needsDebugFormat(rawArg)) {
+      // Enums and structs need {:?} debug format
+      formatParts.push('{:?}');
+      formatArgs.push(arg);
     } else {
-      // Use {} placeholder for non-literals
+      // Primitives, strings, and property access on primitives use {}
       formatParts.push('{}');
       formatArgs.push(arg);
     }
@@ -75,4 +84,24 @@ export function buildPrintln(
   }
 
   return `${macro}!("${formatStr}", ${formatArgs.join(', ')})`;
+}
+
+/**
+ * Check if an expression needs {:?} debug format (enums, structs)
+ */
+function needsDebugFormat(expr: IRExpression): boolean {
+  // Check resolved type if available
+  if ('resolvedType' in expr && expr.resolvedType) {
+    const t = expr.resolvedType as { kind: string };
+    return t.kind === 'enum' || t.kind === 'struct';
+  }
+  
+  // Enum variants always need debug format
+  if (expr.kind === 'enum_variant') {
+    return true;
+  }
+  
+  // Identifiers without resolved type - be conservative, use {}
+  // (Most identifiers are primitives in simple programs)
+  return false;
 }

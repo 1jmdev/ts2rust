@@ -107,7 +107,17 @@ function generateLiteral(expr: IRExpression & { kind: 'literal' }): string {
 // ============================================================================
 
 function generateCall(expr: IRExpression & { kind: 'call' }): string {
-  const args = expr.args.map(generateExpression).join(', ');
+  // Clone struct/non-Copy arguments to avoid ownership issues
+  const args = expr.args.map(arg => {
+    const argStr = generateExpression(arg);
+    // Clone non-Copy identifiers (structs) when passed to functions
+    if (arg.kind === 'identifier' && arg.resolvedType) {
+      if (arg.resolvedType.kind === 'struct') {
+        return `${argStr}.clone()`;
+      }
+    }
+    return argStr;
+  }).join(', ');
   return `${toSnakeCase(expr.callee)}(${args})`;
 }
 
@@ -186,7 +196,14 @@ function generatePropertyAccess(expr: IRExpression & { kind: 'property' }): stri
 
 function generateStructLiteral(expr: IRExpression & { kind: 'struct_literal' }): string {
   const fields = expr.fields
-    .map((f) => `${toSnakeCase(f.name)}: ${generateExpression(f.value)}`)
+    .map((f) => {
+      let value = generateExpression(f.value);
+      // String literals in struct fields likely need to be owned Strings
+      if (f.value.kind === 'literal' && typeof f.value.value === 'string') {
+        value = `${value}.to_string()`;
+      }
+      return `${toSnakeCase(f.name)}: ${value}`;
+    })
     .join(', ');
   return `${expr.structName} { ${fields} }`;
 }

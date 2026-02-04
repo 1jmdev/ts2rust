@@ -4,7 +4,7 @@
 //   import { generate } from './codegen/index.ts';
 //   const rustCode = generate(program);
 
-import type { IRProgram, IRDeclaration } from '../ir/index.ts';
+import type { IRProgram, IRDeclaration, IRStruct, IREnum } from '../ir/index.ts';
 import { generateDeclaration } from './declarations.ts';
 
 // Re-export utilities
@@ -24,6 +24,75 @@ export {
 export * from './builtins/index.ts';
 
 // ============================================================================
+// Pre-processing: Compute optimal derives
+// ============================================================================
+
+/**
+ * Analyze the program and update struct derives to include Copy where possible
+ */
+function optimizeDerives(program: IRProgram): void {
+  // Collect all Copy enums (enums with only unit variants are Copy)
+  const copyTypes = new Set<string>();
+  for (const decl of program.declarations) {
+    if (decl.kind === 'enum') {
+      const enumDecl = decl as IREnum;
+      // Unit-only enums with Copy derive are copyable
+      if (enumDecl.derives.includes('Copy')) {
+        copyTypes.add(enumDecl.name);
+      }
+    }
+  }
+
+  // Helper to check if a single type is Copy
+  function isFieldTypeCopy(type: { kind: string; name?: string; elements?: any[] }): boolean {
+    if (type.kind === 'primitive') {
+      return type.name !== 'String';
+    }
+    if (type.kind === 'tuple') {
+      return type.elements?.every(isFieldTypeCopy) ?? false;
+    }
+    if (type.kind === 'reference') {
+      return true; // &T is Copy
+    }
+    if (type.kind === 'enum' || type.kind === 'struct') {
+      return copyTypes.has(type.name!);
+    }
+    // Arrays are not Copy
+    return false;
+  }
+
+  // Iteratively find structs that can derive Copy
+  // (may need multiple passes if structs reference other structs)
+  let changed = true;
+  const maxIterations = 10;
+  let iteration = 0;
+
+  while (changed && iteration < maxIterations) {
+    changed = false;
+    iteration++;
+
+    for (const decl of program.declarations) {
+      if (decl.kind === 'struct') {
+        const struct = decl as IRStruct;
+        if (copyTypes.has(struct.name)) continue;
+
+        // Check if all fields are Copy types
+        const allCopy = struct.fields.every(f => isFieldTypeCopy(f.type as any));
+
+        if (allCopy) {
+          copyTypes.add(struct.name);
+          // Update the derives
+          if (!struct.derives.includes('Copy')) {
+            struct.derives.push('Copy');
+          }
+          changed = true;
+        }
+      }
+    }
+  }
+}
+
+// ============================================================================
 // Main Generate Function
 // ============================================================================
 
@@ -34,6 +103,9 @@ export * from './builtins/index.ts';
  * @returns The generated Rust source code
  */
 export function generate(program: IRProgram): string {
+  // Pre-process: optimize derives (add Copy where possible)
+  optimizeDerives(program);
+
   const sections: string[] = [];
 
   // Generate structs first (type definitions)

@@ -18,8 +18,9 @@ function toRelativePath(absolutePath: string): string {
 }
 
 import { validate, formatErrors } from './validator.ts';
-import { parse } from './parser.ts';
-import { generate } from './rustgen.ts';
+import { parse } from './parser/index.ts';
+import { generate } from './codegen/index.ts';
+import { resolveTypes } from './analysis/index.ts';
 
 const CARGO_TEMPLATE = `[package]
 name = "{{name}}"
@@ -174,6 +175,9 @@ async function handleRust(args: ParsedArgs): Promise<void> {
   // Parse to IR
   const ir = parse(sourceFile);
 
+  // Resolve types for type-aware code generation
+  resolveTypes(ir);
+
   // Generate Rust
   let rustCode = generate(ir);
 
@@ -210,6 +214,9 @@ async function handleBuild(args: ParsedArgs): Promise<void> {
 
   // Parse to IR
   const ir = parse(sourceFile);
+
+  // Resolve types for type-aware code generation
+  resolveTypes(ir);
 
   // Generate Rust
   let rustCode = generate(ir);
@@ -313,6 +320,9 @@ async function handleProject(args: ParsedArgs): Promise<void> {
   // Parse to IR
   const ir = parse(sourceFile);
 
+  // Resolve types for type-aware code generation
+  resolveTypes(ir);
+
   // Generate Rust
   let rustCode = generate(ir);
 
@@ -323,8 +333,6 @@ async function handleProject(args: ParsedArgs): Promise<void> {
   const srcDir = join(outDir, 'src');
 
   if (existsSync(outDir)) {
-    // Check if it's not empty and warn
-    const files = await Bun.file(outDir).exists();
     console.log(`Note: Output directory ${outDir} already exists, files may be overwritten`);
   }
 
@@ -347,7 +355,6 @@ Cargo.lock
   await Bun.write(join(outDir, '.gitignore'), gitignore);
 
   const relOutDir = toRelativePath(outDir);
-  const relSrcDir = toRelativePath(srcDir);
 
   console.log(`✓ Generated Cargo project at ${relOutDir}`);
   console.log(`  - ${toRelativePath(join(outDir, 'Cargo.toml'))}`);
@@ -363,7 +370,7 @@ Cargo.lock
       stderr: 'pipe',
     });
 
-    const [stdout, stderr] = await Promise.all([
+    const [_stdout, stderr] = await Promise.all([
       new Response(fetchProc.stdout).text(),
       new Response(fetchProc.stderr).text(),
     ]);
@@ -399,7 +406,7 @@ async function formatRustCode(code: string): Promise<string> {
     proc.stdin.write(code);
     proc.stdin.end();
 
-    const [stdout, stderr] = await Promise.all([
+    const [stdout, _stderr] = await Promise.all([
       new Response(proc.stdout).text(),
       new Response(proc.stderr).text(),
     ]);

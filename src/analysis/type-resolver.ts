@@ -241,6 +241,21 @@ function resolveExpression(expr: IRExpression, env: TypeEnvironment): void {
 
     case 'property':
       resolveExpression(expr.object, env);
+      // Check if this is an enum variant access (e.g., Direction.North)
+      if (expr.object.kind === 'identifier') {
+        const enumDef = env.lookupEnum(expr.object.name);
+        if (enumDef) {
+          // Transform this property access into an enum_variant expression
+          // by modifying the expression in place
+          (expr as any).kind = 'enum_variant';
+          (expr as any).enumName = expr.object.name;
+          (expr as any).variant = expr.property;
+          (expr as any).data = [];
+          delete (expr as any).object;
+          delete (expr as any).property;
+          return;
+        }
+      }
       expr.objectType = inferType(expr.object, env);
       break;
 

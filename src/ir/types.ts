@@ -198,24 +198,36 @@ export function isBoolType(type: IRType): boolean {
 // ============================================================================
 
 /** Check if a type is Copy (can be implicitly copied without .clone()) */
-export function isCopyType(type: IRType): boolean {
+export function isCopyType(type: IRType, knownCopyEnums: Set<string> = new Set()): boolean {
   if (type.kind === 'primitive') {
     // String is not Copy, but &str is
     return type.name !== 'String';
   }
   if (type.kind === 'tuple') {
-    return type.elements.every(isCopyType);
+    return type.elements.every(t => isCopyType(t, knownCopyEnums));
   }
   if (type.kind === 'reference') {
     return !type.mutable; // &T is Copy, &mut T is not
   }
-  // Arrays, structs, enums are typically not Copy
+  if (type.kind === 'enum') {
+    // Check if this enum is known to be Copy
+    return knownCopyEnums.has(type.name);
+  }
+  // Arrays and structs are typically not Copy
   return false;
 }
 
+/** Check if all fields of a struct are Copy types */
+export function canStructDeriveCopy(
+  fields: Array<{ type: IRType }>,
+  knownCopyEnums: Set<string> = new Set()
+): boolean {
+  return fields.every(field => isCopyType(field.type, knownCopyEnums));
+}
+
 /** Check if a type needs to be cloned when passed by value */
-export function needsClone(type: IRType): boolean {
-  return !isCopyType(type);
+export function needsClone(type: IRType, knownCopyEnums: Set<string> = new Set()): boolean {
+  return !isCopyType(type, knownCopyEnums);
 }
 
 /** Get the inner type for container types */

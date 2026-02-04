@@ -61,7 +61,8 @@ export const globalTypeRegistry = new TypeRegistry();
 /**
  * Map a TypeScript type string to an IR type
  * @param tsType - The TypeScript type string
- * @param forReturnType - If true, use owned types for returns (String instead of &str)
+ * @param forReturnType - If true, use owned types (String instead of &str) for strings.
+ *                   Use true for return types, struct fields, and variable declarations.
  * @param registry - Optional type registry for custom types
  */
 export function mapTsTypeToIR(

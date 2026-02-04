@@ -53,6 +53,7 @@ export {
   isCopyType,
   needsClone,
   getInnerType,
+  canStructDeriveCopy,
 } from './types.ts';
 
 // ============================================================================
