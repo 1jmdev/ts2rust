@@ -9,6 +9,7 @@ import {
 } from './ir.ts';
 
 import { irTypeToRust, isVoidType } from './types.ts';
+import { getBuiltinMethod, getArrayMethod, getStringMethod } from './builtins.ts';
 
 /**
  * Generate Rust source code from IR
@@ -119,16 +120,72 @@ function generateStatement(
       break;
     }
 
+    case 'switch': {
+      // Generate Rust match expression
+      const discStr = generateExpression(stmt.discriminant);
+      
+      // For f64, we need to use a different approach since f64 doesn't implement Eq
+      // We'll convert to a series of if-else statements for numeric discriminants
+      // Or use match with integer conversion
+      
+      lines.push(`${ind}match ${discStr} as i64 {`);
+
+      for (const caseItem of stmt.cases) {
+        if (caseItem.value === undefined) {
+          // Default case
+          lines.push(`${ind}    _ => {`);
+        } else {
+          const valueStr = generateExpression(caseItem.value);
+          // Convert the value to i64 for matching
+          lines.push(`${ind}    x if x == ${valueStr} as i64 => {`);
+        }
+
+        for (const s of caseItem.body) {
+          lines.push(...generateStatement(s, indentLevel + 2));
+        }
+
+        lines.push(`${ind}    }`);
+      }
+
+      // Add a catch-all if no default case
+      const hasDefault = stmt.cases.some(c => c.value === undefined);
+      if (!hasDefault) {
+        lines.push(`${ind}    _ => {}`);
+      }
+
+      lines.push(`${ind}}`);
+      break;
+    }
+
+    case 'break': {
+      lines.push(`${ind}break;`);
+      break;
+    }
+
     case 'expression': {
       const exprStr = generateExpression(stmt.expression);
+      
+      // Check if this is a method call that is a statement (like console.log, push, etc.)
+      if (stmt.expression.kind === 'method_call') {
+        const methodCall = stmt.expression;
+        if (methodCall.namespace) {
+          // Builtin namespace call (console.log, etc.)
+          const handler = getBuiltinMethod(methodCall.namespace, methodCall.method);
+          if (handler?.isStatement) {
+            lines.push(`${ind}${exprStr};`);
+            break;
+          }
+        } else {
+          // Check if it's an array method that's a statement
+          const arrayHandler = getArrayMethod(methodCall.method);
+          if (arrayHandler?.isStatement) {
+            lines.push(`${ind}${exprStr};`);
+            break;
+          }
+        }
+      }
 
-      // Check if it's a method call that mutates (like push)
-      if (stmt.expression.kind === 'call' && stmt.expression.callee === 'push') {
-        // push() is a statement, not an expression in Rust
-        lines.push(`${ind}${exprStr};`);
-      } else if (stmt.expression.kind === 'call' && stmt.expression.isConsoleLog) {
-        lines.push(`${ind}${exprStr};`);
-      } else if (isLastInNonVoidFn) {
+      if (isLastInNonVoidFn) {
         // Last expression in non-void function - omit semicolon for implicit return
         lines.push(`${ind}${exprStr}`);
       } else {
@@ -175,13 +232,6 @@ function generateExpression(expr: IRExpression): string {
     case 'binary': {
       const left = generateExpression(expr.left);
       const right = generateExpression(expr.right);
-
-      // Special handling for string concatenation
-      if (expr.operator === '+') {
-        // Check if either side might be a string (we'd need type info for this)
-        // For now, treat + as numeric
-      }
-
       return `${left} ${expr.operator} ${right}`;
     }
 
@@ -191,33 +241,39 @@ function generateExpression(expr: IRExpression): string {
     }
 
     case 'call': {
-      if (expr.isConsoleLog) {
-        // Generate println! macro
-        const formatParts: string[] = [];
-        const args: string[] = [];
-
-        for (const arg of expr.args) {
-          formatParts.push('{}');
-          args.push(generateExpression(arg));
-        }
-
-        const formatStr = formatParts.join(' ');
-        if (args.length === 0) {
-          return `println!()`;
-        }
-        return `println!("${formatStr}", ${args.join(', ')})`;
-      }
-
-      // Method calls (first arg is the object)
-      if (expr.callee === 'push' && expr.args.length >= 2) {
-        const obj = generateExpression(expr.args[0]!);
-        const value = generateExpression(expr.args[1]!);
-        return `${obj}.push(${value})`;
-      }
-
       // Regular function call
       const args = expr.args.map(generateExpression).join(', ');
       return `${expr.callee}(${args})`;
+    }
+
+    case 'method_call': {
+      const args = expr.args.map(generateExpression);
+      
+      // Check if this is a builtin namespace call (console.log, Math.abs, etc.)
+      if (expr.namespace) {
+        const handler = getBuiltinMethod(expr.namespace, expr.method);
+        if (handler) {
+          return handler.generateRust(null, args, expr.args);
+        }
+        // Fallback for unknown builtin methods
+        return `/* ${expr.namespace}.${expr.method} not supported */`;
+      }
+
+      // Check if this is an array method
+      const objStr = generateExpression(expr.object);
+      const arrayHandler = getArrayMethod(expr.method);
+      if (arrayHandler) {
+        return arrayHandler.generateRust(objStr, args, expr.args);
+      }
+
+      // Check if this is a string method
+      const stringHandler = getStringMethod(expr.method);
+      if (stringHandler) {
+        return stringHandler.generateRust(objStr, args, expr.args);
+      }
+
+      // Generic method call
+      return `${objStr}.${expr.method}(${args.join(', ')})`;
     }
 
     case 'index': {

@@ -26,6 +26,7 @@ export type IRExpression =
   | IRBinaryOp
   | IRUnaryOp
   | IRCall
+  | IRMethodCall
   | IRIndex
   | IRPropertyAccess
   | IRArrayLiteral;
@@ -61,6 +62,15 @@ export interface IRCall {
   isConsoleLog?: boolean;
 }
 
+export interface IRMethodCall {
+  kind: 'method_call';
+  object: IRExpression;
+  method: string;
+  args: IRExpression[];
+  /** The namespace if this is a builtin like console.log, Math.abs */
+  namespace?: string;
+}
+
 export interface IRIndex {
   kind: 'index';
   object: IRExpression;
@@ -89,6 +99,8 @@ export type IRStatement =
   | IRReturn
   | IRIf
   | IRWhile
+  | IRSwitch
+  | IRBreak
   | IRExpressionStmt
   | IRBlock;
 
@@ -122,6 +134,25 @@ export interface IRWhile {
   kind: 'while';
   condition: IRExpression;
   body: IRStatement[];
+}
+
+export interface IRSwitchCase {
+  /** The value to match, or undefined for default case */
+  value?: IRExpression;
+  /** Statements in this case */
+  body: IRStatement[];
+  /** Whether this case falls through to the next (no break) */
+  fallthrough: boolean;
+}
+
+export interface IRSwitch {
+  kind: 'switch';
+  discriminant: IRExpression;
+  cases: IRSwitchCase[];
+}
+
+export interface IRBreak {
+  kind: 'break';
 }
 
 export interface IRExpressionStmt {

@@ -24,6 +24,9 @@ import {
   NumericLiteral,
   StringLiteral,
   ArrayLiteralExpression,
+  SwitchStatement,
+  CaseClause,
+  DefaultClause,
 } from 'ts-morph';
 
 import {
@@ -38,12 +41,15 @@ import {
   type IRReturn,
   type IRIf,
   type IRWhile,
+  type IRSwitch,
+  type IRSwitchCase,
   type IRExpressionStmt,
   type IRLiteral,
   type IRIdentifier,
   type IRBinaryOp,
   type IRUnaryOp,
   type IRCall,
+  type IRMethodCall,
   type IRIndex,
   type IRPropertyAccess,
   type IRArrayLiteral,
@@ -51,6 +57,7 @@ import {
 } from './ir.ts';
 
 import { mapTsTypeToIR } from './types.ts';
+import { isBuiltinNamespace } from './builtins.ts';
 
 /**
  * Parse a TypeScript source file into our IR
@@ -356,6 +363,53 @@ function parseStatement(stmt: Statement): IRStatement {
       };
     }
 
+    case SyntaxKind.SwitchStatement: {
+      const switchStmt = stmt as SwitchStatement;
+      const discriminant = parseExpression(switchStmt.getExpression());
+
+      const cases: IRSwitchCase[] = [];
+      const caseBlock = switchStmt.getCaseBlock();
+      const clauses = caseBlock.getClauses();
+
+      for (let i = 0; i < clauses.length; i++) {
+        const clause = clauses[i]!;
+        const statements = clause.getStatements().map(parseStatement);
+
+        // Check if this case has a break as the last statement
+        const hasBreak = statements.length > 0 && statements[statements.length - 1]?.kind === 'break';
+        
+        // Remove the break from the statements (Rust match doesn't need explicit break)
+        const bodyStatements = hasBreak ? statements.slice(0, -1) : statements;
+        const fallthrough = !hasBreak && statements.length > 0;
+
+        if (clause.getKind() === SyntaxKind.CaseClause) {
+          const caseClause = clause as CaseClause;
+          cases.push({
+            value: parseExpression(caseClause.getExpression()),
+            body: bodyStatements,
+            fallthrough,
+          });
+        } else {
+          // Default clause
+          cases.push({
+            value: undefined, // undefined means default
+            body: bodyStatements,
+            fallthrough: false,
+          });
+        }
+      }
+
+      return {
+        kind: 'switch',
+        discriminant,
+        cases,
+      } satisfies IRSwitch;
+    }
+
+    case SyntaxKind.BreakStatement: {
+      return { kind: 'break' };
+    }
+
     case SyntaxKind.Block: {
       return {
         kind: 'block',
@@ -488,42 +542,40 @@ function parseExpression(expr: Expression): IRExpression {
     case SyntaxKind.CallExpression: {
       const callExpr = expr as CallExpression;
       const calleeExpr = callExpr.getExpression();
+      const args = callExpr.getArguments().map((a) => parseExpression(a as Expression));
 
-      // Check for console.log
+      // Check for property access (method call or namespace call like console.log, Math.abs)
       if (calleeExpr.getKind() === SyntaxKind.PropertyAccessExpression) {
         const propAccess = calleeExpr as PropertyAccessExpression;
-        const obj = propAccess.getExpression();
-        const prop = propAccess.getName();
-
-        if (obj.getText() === 'console' && prop === 'log') {
-          return {
-            kind: 'call',
-            callee: 'console.log',
-            args: callExpr.getArguments().map((a) => parseExpression(a as Expression)),
-            isConsoleLog: true,
-          } satisfies IRCall;
-        }
-      }
-
-      // Check for method calls like arr.push()
-      if (calleeExpr.getKind() === SyntaxKind.PropertyAccessExpression) {
-        const propAccess = calleeExpr as PropertyAccessExpression;
-        const obj = parseExpression(propAccess.getExpression());
+        const objExpr = propAccess.getExpression();
         const method = propAccess.getName();
+        const objText = objExpr.getText();
 
-        // Return as a special method call
+        // Check if this is a builtin namespace (console, Math, etc.)
+        if (isBuiltinNamespace(objText)) {
+          return {
+            kind: 'method_call',
+            object: { kind: 'identifier', name: objText } satisfies IRIdentifier,
+            method,
+            args,
+            namespace: objText,
+          } satisfies IRMethodCall;
+        }
+
+        // Regular method call on an object
         return {
-          kind: 'call',
-          callee: method,
-          args: [obj, ...callExpr.getArguments().map((a) => parseExpression(a as Expression))],
-        } satisfies IRCall;
+          kind: 'method_call',
+          object: parseExpression(objExpr),
+          method,
+          args,
+        } satisfies IRMethodCall;
       }
 
       // Regular function call
       return {
         kind: 'call',
         callee: calleeExpr.getText(),
-        args: callExpr.getArguments().map((a) => parseExpression(a as Expression)),
+        args,
       } satisfies IRCall;
     }
 
@@ -547,7 +599,7 @@ function parseExpression(expr: Expression): IRExpression {
 
     case SyntaxKind.ArrayLiteralExpression: {
       const arrayLit = expr as ArrayLiteralExpression;
-      const elements = arrayLit.getElements().map(parseExpression);
+      const elements = arrayLit.getElements().map((e) => parseExpression(e as Expression));
 
       // Infer element type from first element, or default to f64
       let elementType: IRType = primitiveType('f64');
